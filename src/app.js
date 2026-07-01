@@ -1,4 +1,12 @@
-let notes = [];
+async function fetchAndRenderNotes() {
+    try {
+        const response = await fetch('/api/notes');
+        const data = await response.json();
+        renderNotes(data);
+    } catch (error) {
+        console.error(error);
+    }
+}
 
 const createForm = document.getElementById('create-form');
 const notesListSection = document.getElementById('notes-list-section');
@@ -11,30 +19,31 @@ createKeyToggle.addEventListener('click', () => {
     createKeyToggle.textContent = type === 'password' ? 'Show' : 'Hide';
 });
 
-createForm.addEventListener('submit', (e) => {
-    e.preventDefault(); // prevent page reload
+createForm.addEventListener('submit', async (e) => {
+    e.preventDefault(); //prevent page reload
 
     const title = document.getElementById('note-title').value;
     const key = document.getElementById('note-key').value;
     const content = document.getElementById('note-content').value;
 
-    const newNote = {
-        id: Date.now(), 
-        title: title,
-        key: key,
-        content: content
-    };
+    try {
+        await fetch('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, key })
+        });
+        
+        createForm.reset();
+        createKeyInput.setAttribute('type', 'password');
+        createKeyToggle.textContent = 'Show';
 
-    notes.unshift(newNote);
-    
-    createForm.reset();
-    createKeyInput.setAttribute('type', 'password');
-    createKeyToggle.textContent = 'Show';
-
-    renderNotes();
+        fetchAndRenderNotes();
+    } catch (error) {
+        console.error(error);
+    }
 });
 
-function renderNotes() {
+function renderNotes(notes) {
     notesListSection.innerHTML = '';
 
     notes.forEach(note => {
@@ -53,7 +62,7 @@ function renderNotes() {
             </div>
 
             <div class="decrypted-content" id="content-${note.id}" hidden>
-                <p>${note.content}</p>
+                <p></p>
             </div>
         `;
 
@@ -73,18 +82,31 @@ function renderNotes() {
         });
 
         // decrypt logic
-        unlockBtn.addEventListener('click', () => {
+        unlockBtn.addEventListener('click', async () => {
             const enteredKey = passInput.value;
             
-            if (enteredKey === note.key) {
-                authRow.style.display = 'none';
-                contentDiv.hidden = false;
-            } else {
-                alert('Invalid key');
-                passInput.value = ''; 
+            try {
+                const response = await fetch('/api/notes/unlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: note.id, key: enteredKey })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    authRow.style.display = 'none';
+                    contentDiv.querySelector('p').textContent = data.content;
+                    contentDiv.hidden = false;
+                } else {
+                    alert('Invalid key');
+                    passInput.value = ''; 
+                }
+            } catch (error) {
+                console.error(error);
             }
         });
     });
 }
 
-renderNotes();
+fetchAndRenderNotes();
