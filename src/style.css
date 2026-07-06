@@ -144,6 +144,6 @@ body.theme-dark {
     background-color: #1a1a1a;
 }
 
-.fixed-header.theme-dark {
+.fixed-header .theme-dark {
     background-color: #1a1a1a;
 }
