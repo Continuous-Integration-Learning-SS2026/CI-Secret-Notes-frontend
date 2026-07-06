@@ -140,7 +140,6 @@ h1 {
     margin-bottom: 15px;
 }
 
-.primary-btn .theme-dark {
+.primary-btn.btn-red {
     background-color: red;
-    color: red;
 }

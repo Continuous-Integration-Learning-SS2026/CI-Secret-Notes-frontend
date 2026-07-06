@@ -1,6 +1,6 @@
 posthog.onFeatureFlags(() => {
     if (posthog.isFeatureEnabled('dark-note-theme')) {
-        document.body.classList.add('theme-dark');
+        document.querySelector('.primary-btn').classList.add('btn-red');
     }
 });
 
