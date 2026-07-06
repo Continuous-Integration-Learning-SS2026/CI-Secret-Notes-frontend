@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -20,5 +20,10 @@
   "bugs": {
     "url": "https://github.com/Continuous-Integration-Learning-SS2026/CI-Secret-Notes-frontend/issues"
   },
-  "homepage": "https://github.com/Continuous-Integration-Learning-SS2026/CI-Secret-Notes-frontend#readme"
+  "homepage": "https://github.com/Continuous-Integration-Learning-SS2026/CI-Secret-Notes-frontend#readme",
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
+    "jest-fetch-mock": "^3.0.3"
+  }
 }

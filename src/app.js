@@ -116,3 +116,7 @@ function renderNotes(notes) {
 }
 
 fetchAndRenderNotes();
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { fetchAndRenderNotes, renderNotes };
+}
