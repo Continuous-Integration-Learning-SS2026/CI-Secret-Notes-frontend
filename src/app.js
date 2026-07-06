@@ -56,10 +56,11 @@ function renderNotes(notes) {
         const article = document.createElement('article');
         article.className = 'note-item';
 
+        // 1. Keep this string 100% static. No variables (${}) allowed here.
         article.innerHTML = `
-            <h3 class="display-title">${note.title}</h3>
+            <h3 class="display-title"></h3>
             
-            <div class="auth-row" id="auth-${note.id}">
+            <div class="auth-row">
                 <div class="password-wrapper">
                     <input type="password" class="unlock-input" placeholder="Enter key..." required>
                     <span class="toggle-password" role="button">Show</span>
@@ -67,18 +68,25 @@ function renderNotes(notes) {
                 <button type="button" class="decrypt-btn">Unlock</button>
             </div>
 
-            <div class="decrypted-content" id="content-${note.id}" hidden>
+            <div class="decrypted-content" hidden>
                 <p></p>
             </div>
         `;
 
-        notesListSection.appendChild(article);
-
+        // 2. Query elements and assign data safely using built-in DOM properties
+        const titleEl = article.querySelector('.display-title');
+        const authRow = article.querySelector('.auth-row');
+        const contentDiv = article.querySelector('.decrypted-content');
         const toggleBtn = article.querySelector('.toggle-password');
         const passInput = article.querySelector('.unlock-input');
         const unlockBtn = article.querySelector('.decrypt-btn');
-        const authRow = article.querySelector(`#auth-${note.id}`);
-        const contentDiv = article.querySelector(`#content-${note.id}`);
+
+        // Safely map values and dynamic structural attributes
+        titleEl.textContent = note.title;
+        authRow.id = `auth-${note.id}`;
+        contentDiv.id = `content-${note.id}`;
+
+        notesListSection.appendChild(article);
 
         // toggle password
         toggleBtn.addEventListener('click', () => {
