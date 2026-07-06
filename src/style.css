@@ -140,10 +140,7 @@ h1 {
     margin-bottom: 15px;
 }
 
-body.theme-dark {
-    background-color: #1a1a1a;
-}
-
-.fixed-header .theme-dark {
-    background-color: #1a1a1a;
+.primary-btn .theme-dark {
+    background-color: red;
+    color: red;
 }
