@@ -1,3 +1,9 @@
+posthog.onFeatureFlags(() => {
+    if (posthog.isFeatureEnabled('dark-note-theme')) {
+        document.body.classList.add('theme-dark');
+    }
+});
+
 async function fetchAndRenderNotes() {
     try {
         const response = await fetch('/api/notes');
