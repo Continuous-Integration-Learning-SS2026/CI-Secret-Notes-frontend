@@ -166,4 +166,5 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/CI-Secret-Notes-backend
+            chmod +x ./deploy/switch-blue-green.sh
             ./deploy/switch-blue-green.sh green
