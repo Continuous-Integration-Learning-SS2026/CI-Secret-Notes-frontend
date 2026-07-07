@@ -9,7 +9,8 @@
   "scripts": {
   "test": "jest",
   "test:coverage": "jest --coverage",
-  "sonar": "sonar-scanner"
+  "sonar": "sonar-scanner",
+  "lint": "eslint src"
   },
   "repository": {
     "type": "git",
@@ -28,6 +29,7 @@
     "jest-environment-jsdom": "^30.4.1",
     "jest-fetch-mock": "^3.0.3",
     "snyk": "^1.1305.2",
-    "sonarqube-scanner": "^4.3.8"
+    "sonarqube-scanner": "^4.3.8",
+    "eslint": "^8.57.0"
   }
 }
