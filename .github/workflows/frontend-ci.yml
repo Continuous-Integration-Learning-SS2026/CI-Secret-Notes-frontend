@@ -1,51 +1,201 @@
-name: Frontend Continuous Integration
+name: Frontend CI/CD
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+    branches: [main, deploy/production]
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/secret-notes-frontend
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: SonarQube scan
+        uses: sonarsource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.scanner.skipJreProvisioning=true
+      - name: Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *lint* stage on ${{ github.ref_name }} (${{ github.sha }}) - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-    - name: Setup Node.js environment
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: 'npm'
-
-    - name: Install dependencies securely
-      run: npm ci
-
-    - name: Run unit tests with coverage
-      run: npm test
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Run Jest with coverage
+        run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *test* stage on ${{ github.ref_name }} (${{ github.sha }}) - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   build:
     needs: test
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (not pushed yet, just verified + saved)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: secret-notes-frontend:${{ github.sha }}
+          outputs: type=docker,dest=/tmp/frontend-image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image
+          path: /tmp/frontend-image.tar
+          retention-days: 1
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *build* stage on ${{ github.ref_name }} (${{ github.sha }}) - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+  deliver:
+    needs: build
+    if: github.ref == 'refs/heads/deploy/production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-image
+          path: /tmp
+      - run: docker load -i /tmp/frontend-image.tar
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tag and push
+        run: |
+          docker tag secret-notes-frontend:${{ github.sha }} ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker tag secret-notes-frontend:${{ github.sha }} ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *deliver* stage on ${{ github.ref_name }} (${{ github.sha }}) - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+  deploy:
+    needs: deliver
+    if: github.ref == 'refs/heads/deploy/production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy green frontend over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/CI-Secret-Notes-frontend
+            git fetch origin deploy/production
+            git checkout deploy/production
+            git pull origin deploy/production
+            cd ~/CI-Secret-Notes-backend
+            docker compose -f docker-compose.prod.yml pull frontend-green || true
+            docker compose -f docker-compose.prod.yml build frontend-green
+            docker compose -f docker-compose.prod.yml up -d frontend-green
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *deploy* stage on ${{ github.ref_name }} (${{ github.sha }}) - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/secret-notes-frontend:latest
+  e2e-and-switch:
+    needs: deploy
+    if: github.ref == 'refs/heads/deploy/production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/CI-Secret-Notes-backend
+          token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Playwright
+        working-directory: e2e/playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run Playwright against green
+        working-directory: e2e/playwright
+        env:
+          BASE_URL: http://${{ secrets.EC2_HOST }}:8082
+        run: npx playwright test
+      - name: Run k6 load test against green
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: e2e/k6/load-test.js
+        env:
+          BASE_URL: http://${{ secrets.EC2_HOST }}:3002
+      - name: Switch traffic to green
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/CI-Secret-Notes-backend
+            ./deploy/switch-blue-green.sh green
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {"text": "Frontend CI failed at *e2e/switch* stage on ${{ github.ref_name }} (${{ github.sha }}) - blue/green NOT switched - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
